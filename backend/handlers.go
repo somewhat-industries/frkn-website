@@ -21,6 +21,102 @@ var validDiagnoses = map[string]bool{
 	"not_in_russia":     true,
 }
 
+// handleTrackingSession accepts a full active-tracking session as a single batch.
+// Rate-limited to 10 sessions per IP per hour; max 500 points per session.
+func handleTrackingSession(db *sql.DB, rl *RateLimiter, apiSecret string) http.HandlerFunc {
+	type pointIn struct {
+		Lat        float64 `json:"lat"`
+		Lon        float64 `json:"lon"`
+		Diagnosis  string  `json:"diagnosis"`
+		MeasuredAt string  `json:"measuredAt"` // ISO-8601
+	}
+	type body struct {
+		AppVersion string    `json:"appVersion"`
+		Points     []pointIn `json:"points"`
+	}
+
+	return func(w http.ResponseWriter, r *http.Request) {
+		if apiSecret != "" && r.Header.Get("X-App-Secret") != apiSecret {
+			jsonError(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		ip := realIP(r)
+		if !rl.Allow(ip) {
+			jsonError(w, "rate limited", http.StatusTooManyRequests)
+			return
+		}
+
+		var req body
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			jsonError(w, "bad json", http.StatusBadRequest)
+			return
+		}
+		if len(req.Points) == 0 {
+			jsonError(w, "no points", http.StatusBadRequest)
+			return
+		}
+		if len(req.Points) > 500 {
+			jsonError(w, "too many points", http.StatusBadRequest)
+			return
+		}
+
+		appVer := sanitize(req.AppVersion, 16)
+
+		tx, err := db.Begin()
+		if err != nil {
+			log.Printf("tx begin error: %v", err)
+			jsonError(w, "db error", http.StatusInternalServerError)
+			return
+		}
+		defer tx.Rollback()
+
+		stmt, err := tx.Prepare(
+			`INSERT INTO reports (lat, lon, diagnosis, carrier, app_version, network_type, created_at)
+			 VALUES (?, ?, ?, 'unknown', ?, 'cellular', ?)`,
+		)
+		if err != nil {
+			log.Printf("prepare error: %v", err)
+			jsonError(w, "db error", http.StatusInternalServerError)
+			return
+		}
+		defer stmt.Close()
+
+		inserted := 0
+		now := time.Now().Unix()
+		for _, p := range req.Points {
+			if !validDiagnoses[p.Diagnosis] {
+				continue
+			}
+			if p.Lat < 39 || p.Lat > 79 || p.Lon < 17 || p.Lon > 193 {
+				continue
+			}
+			lat := math.Round(p.Lat/0.02) * 0.02
+			lon := math.Round(p.Lon/0.02) * 0.02
+
+			ts := now
+			if t, err := time.Parse(time.RFC3339, p.MeasuredAt); err == nil {
+				ts = t.Unix()
+			}
+
+			if _, err := stmt.Exec(lat, lon, p.Diagnosis, appVer, ts); err != nil {
+				log.Printf("insert error: %v", err)
+				continue
+			}
+			inserted++
+		}
+
+		if err := tx.Commit(); err != nil {
+			log.Printf("tx commit error: %v", err)
+			jsonError(w, "db error", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"ok": true, "inserted": inserted})
+	}
+}
+
 func handleReport(db *sql.DB, rl *RateLimiter, apiSecret string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if apiSecret != "" && r.Header.Get("X-App-Secret") != apiSecret {
