@@ -49,7 +49,8 @@ WITH cells AS (
         ROUND(lat / ?) * ?  AS cell_lat,
         ROUND(lon / ?) * ?  AS cell_lon,
         diagnosis,
-        COUNT(*)            AS cnt
+        COUNT(*)            AS cnt,
+        MAX(created_at)     AS last_seen
     FROM reports
     WHERE
         diagnosis != 'not_in_russia'
@@ -63,11 +64,17 @@ cell_totals AS (
     GROUP BY cell_lat, cell_lon
 ),
 dominant AS (
+    -- Pick the diagnosis with the highest count; break ties by most recent report
     SELECT cell_lat, cell_lon, diagnosis
     FROM cells c1
     WHERE cnt = (
         SELECT MAX(cnt) FROM cells c2
         WHERE c2.cell_lat = c1.cell_lat AND c2.cell_lon = c1.cell_lon
+    )
+    AND last_seen = (
+        SELECT MAX(last_seen) FROM cells c3
+        WHERE c3.cell_lat = c1.cell_lat AND c3.cell_lon = c1.cell_lon
+          AND c3.cnt = (SELECT MAX(cnt) FROM cells c2 WHERE c2.cell_lat = c1.cell_lat AND c2.cell_lon = c1.cell_lon)
     )
     GROUP BY cell_lat, cell_lon
 )

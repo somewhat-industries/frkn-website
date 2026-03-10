@@ -16,6 +16,7 @@ var validDiagnoses = map[string]bool{
 	"whitelist_active":  true,
 	"normal_filtering":  true,
 	"no_internet":       true,
+	"no_signal":         true,
 	"everything_works":  true,
 	"not_in_russia":     true,
 }
