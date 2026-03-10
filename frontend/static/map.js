@@ -39,7 +39,7 @@ L.tileLayer('https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png
 map.createPane('fogPane');
 const fogPaneEl = map.getPane('fogPane');
 fogPaneEl.style.zIndex = 400;
-fogPaneEl.style.filter = 'blur(22px)';
+fogPaneEl.style.filter = 'blur(8px)';
 fogPaneEl.style.opacity = '1';
 
 // Label pane sits above fog, no blur
@@ -74,7 +74,7 @@ function fogRadiusMeters(zoom, count) {
 
 // Opacity scales with count: lone point is subtle, cluster is vivid
 function fogOpacity(count) {
-  return Math.min(0.18 + Math.log10(Math.max(count, 1)) * 0.18, 0.72);
+  return Math.min(0.42 + Math.log10(Math.max(count, 1)) * 0.2, 0.82);
 }
 
 function formatCount(n) {
