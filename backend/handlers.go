@@ -20,8 +20,13 @@ var validDiagnoses = map[string]bool{
 	"not_in_russia":     true,
 }
 
-func handleReport(db *sql.DB, rl *RateLimiter) http.HandlerFunc {
+func handleReport(db *sql.DB, rl *RateLimiter, apiSecret string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if apiSecret != "" && r.Header.Get("X-App-Secret") != apiSecret {
+			jsonError(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+
 		ip := realIP(r)
 		if !rl.Allow(ip) {
 			jsonError(w, "rate limited", http.StatusTooManyRequests)

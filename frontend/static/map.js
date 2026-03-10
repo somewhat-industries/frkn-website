@@ -18,27 +18,23 @@ const DIAGNOSIS_LABELS = {
 
 // ── Map init ──────────────────────────────────────────────────────────────────
 
+// Russia approximate bounding box (includes Kaliningrad in the west, Chukotka in the east)
+const RUSSIA_BOUNDS = L.latLngBounds([39.0, 17.0], [83.0, 193.0]);
+
 const map = L.map('map', {
   center: [62, 90],
   zoom: 4,
   minZoom: 3,
   maxZoom: 14,
   zoomControl: true,
+  maxBounds: RUSSIA_BOUNDS,
+  maxBoundsViscosity: 0.85,
 });
 
 L.tileLayer('https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png', {
   attribution: '© <a href="https://openstreetmap.org">OSM</a> © <a href="https://carto.com">CARTO</a>',
   subdomains: 'abcd',
   maxZoom: 19,
-}).addTo(map);
-
-// Add a subtle label layer on top (country/city names without background)
-L.tileLayer('https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png', {
-  attribution: '',
-  subdomains: 'abcd',
-  maxZoom: 19,
-  pane: 'shadowPane', // renders above markers would need custom pane; skip for now
-  opacity: 0.5,
 }).addTo(map);
 
 const circleLayer = L.layerGroup().addTo(map);
@@ -165,6 +161,34 @@ setInterval(() => {
   loadMapData();
   loadStats();
 }, 3 * 60 * 1000);
+
+// ── VPN Notice ────────────────────────────────────────────────────────────────
+
+(function () {
+  const notice = document.getElementById('vpn-notice');
+  const closeBtn = document.getElementById('vpn-notice-close');
+  if (!notice || !closeBtn) return;
+
+  // Measure and set CSS var so the map top adjusts correctly
+  function updateNoticeHeight() {
+    const h = notice.classList.contains('hidden') ? 0 : notice.offsetHeight;
+    document.documentElement.style.setProperty('--notice-h', h + 'px');
+    map.invalidateSize();
+  }
+
+  updateNoticeHeight();
+
+  closeBtn.addEventListener('click', () => {
+    notice.classList.add('hidden');
+    setTimeout(updateNoticeHeight, 320); // after CSS transition
+    sessionStorage.setItem('vpn-notice-dismissed', '1');
+  });
+
+  if (sessionStorage.getItem('vpn-notice-dismissed')) {
+    notice.classList.add('hidden');
+    setTimeout(updateNoticeHeight, 0);
+  }
+})();
 
 // ── Initial load ──────────────────────────────────────────────────────────────
 

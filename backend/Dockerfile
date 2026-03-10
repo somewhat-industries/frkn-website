@@ -1,5 +1,5 @@
 # ── Build stage ────────────────────────────────────────────────
-FROM golang:1.22-alpine AS builder
+FROM golang:1.23-alpine AS builder
 
 RUN apk add --no-cache gcc musl-dev
 
@@ -19,13 +19,13 @@ RUN adduser -D -s /bin/sh frkn
 WORKDIR /app
 COPY --from=builder /app/frkn-backend .
 
-# Static files mounted via volume (see docker-compose)
-RUN mkdir -p /app/static && chown -R frkn:frkn /app
+# Static files and data dirs
+RUN mkdir -p /app/static /app/data && chown -R frkn:frkn /app
 
 USER frkn
 
 ENV PORT=8080
-ENV DB_PATH=/data/data.db
+ENV DB_PATH=/app/data/data.db
 ENV STATIC_DIR=/app/static
 
 EXPOSE 8080

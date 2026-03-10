@@ -22,11 +22,13 @@ func main() {
 	db := initDB(dbPath)
 	defer db.Close()
 
+	apiSecret := os.Getenv("API_SECRET")
+
 	// 10 reports per IP per hour
 	rl := newRateLimiter(10, time.Hour)
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /api/report", handleReport(db, rl))
+	mux.HandleFunc("POST /api/report", handleReport(db, rl, apiSecret))
 	mux.HandleFunc("GET /api/map", handleMap(db))
 	mux.HandleFunc("GET /api/stats", handleStats(db))
 

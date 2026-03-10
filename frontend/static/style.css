@@ -9,6 +9,7 @@
   --text-primary:   #2D2D3A;
   --text-secondary: #6B6B7E;
   --header-h: 56px;
+  --notice-h: 0px;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -112,11 +113,59 @@ body {
 
 .app-badge:hover { opacity: 0.85; }
 
+/* ── VPN Notice ──────────────────────────────────────────────── */
+#vpn-notice {
+  position: fixed;
+  top: var(--header-h);
+  left: 0; right: 0;
+  z-index: 999;
+  background: rgba(65, 90, 128, 0.93);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0.3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 8px 40px 8px 16px;
+  line-height: 1.4;
+  transition: transform 0.3s ease, opacity 0.3s ease;
+}
+
+#vpn-notice.hidden {
+  transform: translateY(-100%);
+  opacity: 0;
+  pointer-events: none;
+}
+
+#vpn-notice svg {
+  flex-shrink: 0;
+  opacity: 0.8;
+}
+
+#vpn-notice-close {
+  position: absolute;
+  right: 10px;
+  background: none;
+  border: none;
+  color: rgba(255,255,255,0.6);
+  font-size: 18px;
+  cursor: pointer;
+  padding: 2px 6px;
+  line-height: 1;
+  transition: color 0.15s;
+}
+#vpn-notice-close:hover { color: white; }
+
 /* ── Map ─────────────────────────────────────────────────────── */
 #map {
   position: fixed;
   inset: 0;
-  top: var(--header-h);
+  top: calc(var(--header-h) + var(--notice-h));
+  transition: top 0.3s ease;
 }
 
 /* Override Leaflet attribution */
