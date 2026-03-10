@@ -63,13 +63,13 @@ function gridSizeForZoom(zoom) {
 
 // Fog circle radius in meters.
 // Covers roughly half the grid cell so adjacent points naturally overlap and merge.
-function fogRadiusMeters(zoom, count) {
-  const gs = gridSizeForZoom(zoom);
-  // 1° lat ≈ 111 km; use 22% of half-cell — tight fog, blur does the rest
-  const base = gs * 111000 * 0.22;
-  // Scale slightly with count so denser areas glow more
-  const scale = 1 + Math.min(Math.log10(Math.max(count, 1)) * 0.2, 0.5);
-  return Math.max(base * scale, 350);
+function fogRadiusMeters(zoom) {
+  if (zoom > 13) return 200;
+  if (zoom > 11) return 350;
+  if (zoom > 9)  return 1200;
+  if (zoom > 7)  return 5000;
+  if (zoom > 5)  return 18000;
+  return 60000;
 }
 
 // Opacity scales with count: lone point is subtle, cluster is vivid
@@ -98,7 +98,7 @@ function renderCells(cells, zoom) {
   cells.forEach(cell => {
     const color   = DIAGNOSIS_COLORS[cell.diagnosis] || '#888';
     const label   = DIAGNOSIS_LABELS[cell.diagnosis] || cell.diagnosis;
-    const radius  = fogRadiusMeters(zoom, cell.count);
+    const radius  = fogRadiusMeters(zoom);
     const opacity = fogOpacity(cell.count);
     const latlng  = [cell.lat, cell.lon];
 
