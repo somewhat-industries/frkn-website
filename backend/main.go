@@ -24,8 +24,8 @@ func main() {
 
 	apiSecret := os.Getenv("API_SECRET")
 
-	// 10 reports per IP per hour
-	rl := newRateLimiter(10, time.Hour)
+	// 300 reports per IP per hour (active tracking sessions can have 100+ points)
+	rl := newRateLimiter(300, time.Hour)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /api/report", handleReport(db, rl, apiSecret))
