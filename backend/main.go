@@ -32,6 +32,7 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /api/report", handleReport(db, rl, apiSecret))
 	mux.HandleFunc("POST /api/tracking/session", handleTrackingSession(db, sessionRL, apiSecret))
+	mux.HandleFunc("POST /api/admin/purge", handlePurge(db, apiSecret))
 	mux.HandleFunc("GET /api/map", handleMap(db))
 	mux.HandleFunc("GET /api/stats", handleStats(db))
 

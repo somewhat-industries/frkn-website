@@ -23,64 +23,69 @@ func gridSize(zoom int) float64 {
 	case zoom <= 11:
 		return 0.1
 	default:
-		return 0.05
+		return 0.02
 	}
 }
 
 func queryClusters(db *sql.DB, zoom int, lat1, lon1, lat2, lon2 float64) ([]ClusterCell, error) {
 	gs := gridSize(zoom)
 
-	// Expand bounds slightly to avoid edge artifacts
 	margin := gs
 	lat1 -= margin
 	lat2 += margin
 	lon1 -= margin
 	lon2 += margin
 
-	// Clamp to Russia bbox
 	lat1 = math.Max(lat1, 40)
 	lat2 = math.Min(lat2, 78)
 	lon1 = math.Max(lon1, 18)
 	lon2 = math.Min(lon2, 192)
 
+	// Excluded diagnoses: not meaningful for the map
+	// - not_in_russia: VPN users, useless noise
+	// - no_signal:     E/2G/3G dead zones, not internet freedom data
+	// - no_internet:   ambiguous (could be coverage, not filtering)
 	query := `
 WITH cells AS (
     SELECT
-        ROUND(lat / ?) * ?  AS cell_lat,
-        ROUND(lon / ?) * ?  AS cell_lon,
+        ROUND(lat / ?) * ?  AS grid_lat,
+        ROUND(lon / ?) * ?  AS grid_lon,
+        AVG(lat)            AS avg_lat,
+        AVG(lon)            AS avg_lon,
         diagnosis,
         COUNT(*)            AS cnt,
         MAX(created_at)     AS last_seen
     FROM reports
     WHERE
-        diagnosis != 'not_in_russia'
+        diagnosis NOT IN ('not_in_russia', 'no_signal', 'no_internet')
         AND lat BETWEEN ? AND ?
         AND lon BETWEEN ? AND ?
-    GROUP BY cell_lat, cell_lon, diagnosis
+    GROUP BY grid_lat, grid_lon, diagnosis
 ),
 cell_totals AS (
-    SELECT cell_lat, cell_lon, SUM(cnt) AS total_cnt
+    SELECT
+        grid_lat, grid_lon,
+        SUM(cnt)                            AS total_cnt,
+        SUM(avg_lat * cnt) / SUM(cnt)       AS cell_lat,
+        SUM(avg_lon * cnt) / SUM(cnt)       AS cell_lon
     FROM cells
-    GROUP BY cell_lat, cell_lon
+    GROUP BY grid_lat, grid_lon
 ),
 dominant AS (
-    -- Pick the diagnosis with the highest count; break ties by most recent report
-    SELECT cell_lat, cell_lon, diagnosis
-    FROM cells c1
-    WHERE cnt = (
-        SELECT MAX(cnt) FROM cells c2
-        WHERE c2.cell_lat = c1.cell_lat AND c2.cell_lon = c1.cell_lon
+    SELECT grid_lat, grid_lon, diagnosis
+    FROM (
+        SELECT grid_lat, grid_lon, diagnosis,
+               ROW_NUMBER() OVER (
+                   PARTITION BY grid_lat, grid_lon
+                   ORDER BY cnt DESC, last_seen DESC
+               ) AS rn
+        FROM cells
     )
-    AND last_seen = (
-        SELECT MAX(last_seen) FROM cells c3
-        WHERE c3.cell_lat = c1.cell_lat AND c3.cell_lon = c1.cell_lon
-          AND c3.cnt = (SELECT MAX(cnt) FROM cells c2 WHERE c2.cell_lat = c1.cell_lat AND c2.cell_lon = c1.cell_lon)
-    )
-    GROUP BY cell_lat, cell_lon
+    WHERE rn = 1
 )
-SELECT d.cell_lat, d.cell_lon, t.total_cnt, d.diagnosis
+SELECT t.cell_lat, t.cell_lon, t.total_cnt, d.diagnosis
 FROM dominant d
-JOIN cell_totals t ON t.cell_lat = d.cell_lat AND t.cell_lon = d.cell_lon
+JOIN cell_totals t ON t.grid_lat = d.grid_lat AND t.grid_lon = d.grid_lon
 ORDER BY t.total_cnt DESC
 LIMIT 2000
 `

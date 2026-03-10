@@ -117,6 +117,37 @@ func handleTrackingSession(db *sql.DB, rl *RateLimiter, apiSecret string) http.H
 	}
 }
 
+// handlePurge deletes noisy diagnoses from the database. Admin-only.
+func handlePurge(db *sql.DB, apiSecret string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if apiSecret == "" || r.Header.Get("X-App-Secret") != apiSecret {
+			jsonError(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		diagnoses := r.URL.Query()["diagnosis"]
+		if len(diagnoses) == 0 {
+			jsonError(w, "specify ?diagnosis=...", http.StatusBadRequest)
+			return
+		}
+		var total int64
+		for _, d := range diagnoses {
+			if !validDiagnoses[d] {
+				continue
+			}
+			res, err := db.Exec(`DELETE FROM reports WHERE diagnosis = ?`, d)
+			if err != nil {
+				log.Printf("purge error: %v", err)
+				jsonError(w, "db error", http.StatusInternalServerError)
+				return
+			}
+			n, _ := res.RowsAffected()
+			total += n
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"ok": true, "deleted": total})
+	}
+}
+
 func handleReport(db *sql.DB, rl *RateLimiter, apiSecret string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if apiSecret != "" && r.Header.Get("X-App-Secret") != apiSecret {

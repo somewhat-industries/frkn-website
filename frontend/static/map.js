@@ -2,33 +2,29 @@
 
 const DIAGNOSIS_COLORS = {
   whitelist_active:  '#C44D4D',
-  no_internet:       '#D4943A',
   normal_filtering:  '#4A8B6E',
   everything_works:  '#415A80',
-  not_in_russia:     '#A5D4DC',
 };
 
 const DIAGNOSIS_LABELS = {
   whitelist_active:  'Белый список активен',
-  no_internet:       'Нет интернета',
   normal_filtering:  'Обычная фильтрация',
   everything_works:  'Всё работает',
-  not_in_russia:     'Не в России',
 };
 
 // ── Map init ──────────────────────────────────────────────────────────────────
 
-// Russia approximate bounding box (includes Kaliningrad in the west, Chukotka in the east)
 const RUSSIA_BOUNDS = L.latLngBounds([39.0, 17.0], [83.0, 193.0]);
 
 const map = L.map('map', {
   center: [62, 90],
   zoom: 4,
   minZoom: 3,
-  maxZoom: 14,
+  maxZoom: 16,
   zoomControl: true,
   maxBounds: RUSSIA_BOUNDS,
   maxBoundsViscosity: 0.85,
+  preferCanvas: false,  // SVG needed for filter blur
 });
 
 L.tileLayer('https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png', {
@@ -37,14 +33,48 @@ L.tileLayer('https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png
   maxZoom: 19,
 }).addTo(map);
 
-const circleLayer = L.layerGroup().addTo(map);
+// ── Fog pane ──────────────────────────────────────────────────────────────────
+// A separate SVG pane with CSS blur — creates the atmospheric fog look.
+
+map.createPane('fogPane');
+const fogPaneEl = map.getPane('fogPane');
+fogPaneEl.style.zIndex = 400;
+fogPaneEl.style.filter = 'blur(22px)';
+fogPaneEl.style.opacity = '1';
+
+// Label pane sits above fog, no blur
+map.createPane('labelPane');
+map.getPane('labelPane').style.zIndex = 450;
+map.getPane('labelPane').style.pointerEvents = 'none';
+
+const fogLayer   = L.layerGroup().addTo(map);
+const hitLayer   = L.layerGroup().addTo(map);   // transparent interactive circles for popups
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function radiusForCount(count, zoom) {
-  const base = 5 + Math.log10(Math.max(count, 1)) * 6;
-  const zoomScale = Math.max(0.5, zoom / 8);
-  return base * zoomScale;
+// Grid size matches server-side gridSize()
+function gridSizeForZoom(zoom) {
+  if (zoom <= 4)  return 2.0;
+  if (zoom <= 6)  return 1.0;
+  if (zoom <= 8)  return 0.5;
+  if (zoom <= 11) return 0.1;
+  return 0.02;
+}
+
+// Fog circle radius in meters.
+// Covers roughly half the grid cell so adjacent points naturally overlap and merge.
+function fogRadiusMeters(zoom, count) {
+  const gs = gridSizeForZoom(zoom);
+  // 1° lat ≈ 111 km; use 55% of half-cell so blobs blend nicely
+  const base = gs * 111000 * 0.55;
+  // Scale slightly with count so denser areas glow more
+  const scale = 1 + Math.min(Math.log10(Math.max(count, 1)) * 0.25, 0.6);
+  return Math.max(base * scale, 600);
+}
+
+// Opacity scales with count: lone point is subtle, cluster is vivid
+function fogOpacity(count) {
+  return Math.min(0.18 + Math.log10(Math.max(count, 1)) * 0.18, 0.72);
 }
 
 function formatCount(n) {
@@ -52,17 +82,62 @@ function formatCount(n) {
   return String(n);
 }
 
+function pluralReport(n) {
+  const m10 = n % 10, m100 = n % 100;
+  if (m10 === 1 && m100 !== 11) return 'отчёт';
+  if (m10 >= 2 && m10 <= 4 && (m100 < 10 || m100 >= 20)) return 'отчёта';
+  return 'отчётов';
+}
+
+// ── Rendering ─────────────────────────────────────────────────────────────────
+
+function renderCells(cells, zoom) {
+  fogLayer.clearLayers();
+  hitLayer.clearLayers();
+
+  cells.forEach(cell => {
+    const color   = DIAGNOSIS_COLORS[cell.diagnosis] || '#888';
+    const label   = DIAGNOSIS_LABELS[cell.diagnosis] || cell.diagnosis;
+    const radius  = fogRadiusMeters(zoom, cell.count);
+    const opacity = fogOpacity(cell.count);
+    const latlng  = [cell.lat, cell.lon];
+
+    // Fog blob — blurred, visual only, not interactive
+    L.circle(latlng, {
+      pane:        'fogPane',
+      radius,
+      stroke:      false,
+      fillColor:   color,
+      fillOpacity: opacity,
+      interactive: false,
+    }).addTo(fogLayer);
+
+    // Invisible hit area — same radius, transparent, catches clicks for popup
+    const popup = `
+      <div style="text-align:center;padding:4px 2px">
+        <div style="width:10px;height:10px;border-radius:50%;background:${color};margin:0 auto 6px"></div>
+        <div style="font-weight:700;font-size:13px;color:${color}">${label}</div>
+        <div style="margin-top:4px;color:#6B6B7E;font-size:11px">${formatCount(cell.count)} ${pluralReport(cell.count)}</div>
+      </div>`;
+
+    L.circle(latlng, {
+      radius,
+      stroke:      false,
+      fillColor:   color,
+      fillOpacity: 0,
+      interactive: true,
+    })
+    .bindPopup(popup)
+    .addTo(hitLayer);
+  });
+
+  const emptyState = document.getElementById('empty-state');
+  if (emptyState) {
+    emptyState.classList.toggle('visible', cells.length === 0);
+  }
+}
+
 // ── Data loading ──────────────────────────────────────────────────────────────
-
-let loadingTimer = null;
-
-function showLoading() {
-  document.getElementById('loading').classList.remove('hidden');
-}
-
-function hideLoading() {
-  document.getElementById('loading').classList.add('hidden');
-}
 
 async function loadMapData() {
   const bounds = map.getBounds();
@@ -77,7 +152,7 @@ async function loadMapData() {
     ].join(','),
   });
 
-  showLoading();
+  document.getElementById('loading').classList.remove('hidden');
   try {
     const res = await fetch(`/api/map?${params}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -86,52 +161,8 @@ async function loadMapData() {
   } catch (err) {
     console.error('map load error:', err);
   } finally {
-    hideLoading();
+    document.getElementById('loading').classList.add('hidden');
   }
-}
-
-function renderCells(cells, zoom) {
-  circleLayer.clearLayers();
-
-  cells.forEach(cell => {
-    const color  = DIAGNOSIS_COLORS[cell.diagnosis] || '#999';
-    const radius = radiusForCount(cell.count, zoom);
-    const label  = DIAGNOSIS_LABELS[cell.diagnosis] || cell.diagnosis;
-
-    L.circleMarker([cell.lat, cell.lon], {
-      radius,
-      color,
-      fillColor:   color,
-      fillOpacity: 0.55,
-      weight:      1.5,
-      opacity:     0.85,
-    })
-    .bindPopup(`
-      <div style="text-align:center;padding:4px 0">
-        <div style="font-weight:700;font-size:13px;color:${color}">${label}</div>
-        <div style="margin-top:4px;color:#6B6B7E;font-size:11px">${formatCount(cell.count)} ${pluralReport(cell.count)}</div>
-      </div>
-    `)
-    .addTo(circleLayer);
-  });
-
-  // Show/hide empty state
-  const emptyState = document.getElementById('empty-state');
-  if (emptyState) {
-    if (cells.length === 0) {
-      emptyState.classList.add('visible');
-    } else {
-      emptyState.classList.remove('visible');
-    }
-  }
-}
-
-function pluralReport(n) {
-  const mod10 = n % 10;
-  const mod100 = n % 100;
-  if (mod10 === 1 && mod100 !== 11) return 'отчёт';
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return 'отчёта';
-  return 'отчётов';
 }
 
 // ── Stats ─────────────────────────────────────────────────────────────────────
@@ -156,20 +187,15 @@ map.on('moveend zoomend', () => {
   moveDebounce = setTimeout(loadMapData, 300);
 });
 
-// Auto-refresh every 3 minutes
-setInterval(() => {
-  loadMapData();
-  loadStats();
-}, 3 * 60 * 1000);
+setInterval(() => { loadMapData(); loadStats(); }, 3 * 60 * 1000);
 
 // ── VPN Notice ────────────────────────────────────────────────────────────────
 
 (function () {
-  const notice = document.getElementById('vpn-notice');
+  const notice   = document.getElementById('vpn-notice');
   const closeBtn = document.getElementById('vpn-notice-close');
   if (!notice || !closeBtn) return;
 
-  // Measure and set CSS var so the map top adjusts correctly
   function updateNoticeHeight() {
     const h = notice.classList.contains('hidden') ? 0 : notice.offsetHeight;
     document.documentElement.style.setProperty('--notice-h', h + 'px');
@@ -180,7 +206,7 @@ setInterval(() => {
 
   closeBtn.addEventListener('click', () => {
     notice.classList.add('hidden');
-    setTimeout(updateNoticeHeight, 320); // after CSS transition
+    setTimeout(updateNoticeHeight, 320);
     sessionStorage.setItem('vpn-notice-dismissed', '1');
   });
 
