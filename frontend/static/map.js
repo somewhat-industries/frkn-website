@@ -65,11 +65,11 @@ function gridSizeForZoom(zoom) {
 // Covers roughly half the grid cell so adjacent points naturally overlap and merge.
 function fogRadiusMeters(zoom, count) {
   const gs = gridSizeForZoom(zoom);
-  // 1° lat ≈ 111 km; use 55% of half-cell so blobs blend nicely
-  const base = gs * 111000 * 0.55;
+  // 1° lat ≈ 111 km; use 22% of half-cell — tight fog, blur does the rest
+  const base = gs * 111000 * 0.22;
   // Scale slightly with count so denser areas glow more
-  const scale = 1 + Math.min(Math.log10(Math.max(count, 1)) * 0.25, 0.6);
-  return Math.max(base * scale, 600);
+  const scale = 1 + Math.min(Math.log10(Math.max(count, 1)) * 0.2, 0.5);
+  return Math.max(base * scale, 350);
 }
 
 // Opacity scales with count: lone point is subtle, cluster is vivid
