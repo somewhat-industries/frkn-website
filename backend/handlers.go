@@ -91,8 +91,9 @@ func handleTrackingSession(db *sql.DB, rl *RateLimiter, apiSecret string) http.H
 			if p.Lat < 39 || p.Lat > 79 || p.Lon < 17 || p.Lon > 193 {
 				continue
 			}
-			lat := math.Round(p.Lat/0.02) * 0.02
-			lon := math.Round(p.Lon/0.02) * 0.02
+			// Tracking data: finer 0.002° grid (~200 m) — route accuracy matters more than max privacy
+			lat := math.Round(p.Lat/0.002) * 0.002
+			lon := math.Round(p.Lon/0.002) * 0.002
 
 			ts := now
 			if t, err := time.Parse(time.RFC3339, p.MeasuredAt); err == nil {
