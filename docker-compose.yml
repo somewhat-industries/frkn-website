@@ -1,0 +1,57 @@
+version: '3.9'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: frkn-backend
+    restart: unless-stopped
+    environment:
+      - PORT=8080
+      - DB_PATH=/data/data.db
+      - STATIC_DIR=/app/static
+    volumes:
+      - db_data:/data                          # SQLite persistence
+      - ./frontend/static:/app/static:ro       # Serve frontend files
+    networks:
+      - frkn_net
+    # Don't expose port directly — nginx proxies
+    expose:
+      - "8080"
+    mem_limit: 400m
+    cpus: '1.5'
+
+  nginx:
+    image: nginx:1.25-alpine
+    container_name: frkn-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/nginx.conf:/etc/nginx/conf.d/frknsw.conf:ro
+      - certbot_www:/var/www/certbot:ro
+      - certbot_conf:/etc/letsencrypt:ro
+    networks:
+      - frkn_net
+    depends_on:
+      - backend
+
+  certbot:
+    image: certbot/certbot:latest
+    container_name: frkn-certbot
+    volumes:
+      - certbot_www:/var/www/certbot
+      - certbot_conf:/etc/letsencrypt
+    # Run manually: docker compose run --rm certbot certonly --webroot ...
+    entrypoint: /bin/sh -c "trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done"
+
+volumes:
+  db_data:
+  certbot_www:
+  certbot_conf:
+
+networks:
+  frkn_net:
+    driver: bridge

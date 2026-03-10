@@ -1,0 +1,21 @@
+[Unit]
+Description=FRKN Backend
+After=network.target
+
+[Service]
+Type=simple
+User=frkn
+Group=frkn
+WorkingDirectory=/opt/frkn
+ExecStart=/opt/frkn/frkn-backend
+Environment=DB_PATH=/opt/frkn/data.db
+Environment=PORT=8080
+Environment=STATIC_DIR=/opt/frkn/static
+Restart=on-failure
+RestartSec=5
+# Resource limits for 2GB VPS
+MemoryMax=400M
+CPUQuota=150%
+
+[Install]
+WantedBy=multi-user.target

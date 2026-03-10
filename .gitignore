@@ -1,0 +1,4 @@
+backend/frkn-backend
+backend/data.db
+*.db
+.env
