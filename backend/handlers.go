@@ -192,9 +192,9 @@ func handleReport(db *sql.DB, rl *RateLimiter, apiSecret string) http.HandlerFun
 			return
 		}
 
-		// Round to 0.005° grid (~550 m) — precise enough for city-level display
-		lat := math.Round(body.Lat/0.005) * 0.005
-		lon := math.Round(body.Lon/0.005) * 0.005
+		// Store raw coordinates — no server-side rounding
+		lat := body.Lat
+		lon := body.Lon
 
 		carrier := sanitize(body.Carrier, 64)
 		appVer := sanitize(body.AppVersion, 16)

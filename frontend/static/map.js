@@ -72,12 +72,12 @@ function gridSizeForZoom(zoom) {
 // Fog circle radius in meters.
 // Covers roughly half the grid cell so adjacent points naturally overlap and merge.
 function fogRadiusMeters(zoom) {
-  if (zoom > 13) return 200;
-  if (zoom > 11) return 350;
-  if (zoom > 9)  return 1200;
-  if (zoom > 7)  return 5000;
-  if (zoom > 5)  return 18000;
-  return 60000;
+  if (zoom > 13) return 320;
+  if (zoom > 11) return 550;
+  if (zoom > 9)  return 1800;
+  if (zoom > 7)  return 6000;
+  if (zoom > 5)  return 22000;
+  return 70000;
 }
 
 // Opacity scales with count: lone point is subtle, cluster is vivid
