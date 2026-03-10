@@ -33,6 +33,14 @@ L.tileLayer('https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png
   maxZoom: 19,
 }).addTo(map);
 
+// City labels on top of fog layer
+L.tileLayer('https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png', {
+  subdomains: 'abcd',
+  maxZoom: 19,
+  pane: 'shadowPane',  // built-in pane above overlayPane, below popupPane
+  opacity: 0.85,
+}).addTo(map);
+
 // ── Fog pane ──────────────────────────────────────────────────────────────────
 // A separate SVG pane with CSS blur — creates the atmospheric fog look.
 
@@ -215,6 +223,84 @@ setInterval(() => { loadMapData(); loadStats(); }, 3 * 60 * 1000);
     setTimeout(updateNoticeHeight, 0);
   }
 })();
+
+// ── Search (Nominatim) ────────────────────────────────────────────────────────
+
+const searchInput   = document.getElementById('search-input');
+const searchResults = document.getElementById('search-results');
+const locateBtn     = document.getElementById('locate-btn');
+
+let searchDebounce;
+let locateMarker;
+
+searchInput.addEventListener('input', () => {
+  clearTimeout(searchDebounce);
+  const q = searchInput.value.trim();
+  if (q.length < 2) { searchResults.classList.add('hidden'); return; }
+  searchDebounce = setTimeout(() => geocode(q), 350);
+});
+
+searchInput.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { searchResults.classList.add('hidden'); searchInput.blur(); }
+});
+
+document.addEventListener('click', e => {
+  if (!e.target.closest('#search-control')) searchResults.classList.add('hidden');
+});
+
+async function geocode(q) {
+  try {
+    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=5&countrycodes=ru&accept-language=ru`;
+    const res = await fetch(url, { headers: { 'Accept-Language': 'ru' } });
+    const data = await res.json();
+    renderResults(data);
+  } catch { /* silent */ }
+}
+
+function renderResults(items) {
+  searchResults.innerHTML = '';
+  if (!items.length) {
+    searchResults.innerHTML = '<li style="opacity:0.5;pointer-events:none">Ничего не найдено</li>';
+    searchResults.classList.remove('hidden');
+    return;
+  }
+  items.forEach(item => {
+    const li = document.createElement('li');
+    const name = item.name || item.display_name.split(',')[0];
+    const sub  = item.display_name.split(',').slice(1, 3).join(',').trim();
+    li.innerHTML = `${name}<span class="result-sub">${sub}</span>`;
+    li.addEventListener('click', () => {
+      const lat = parseFloat(item.lat);
+      const lon = parseFloat(item.lon);
+      const zoom = item.type === 'city' || item.type === 'town' ? 12 : 10;
+      map.setView([lat, lon], zoom, { animate: true });
+      searchInput.value = name;
+      searchResults.classList.add('hidden');
+    });
+    searchResults.appendChild(li);
+  });
+  searchResults.classList.remove('hidden');
+}
+
+// ── Geolocation ───────────────────────────────────────────────────────────────
+
+locateBtn.addEventListener('click', () => {
+  if (!navigator.geolocation) return;
+  locateBtn.style.opacity = '0.5';
+  navigator.geolocation.getCurrentPosition(pos => {
+    locateBtn.style.opacity = '';
+    const { latitude: lat, longitude: lon } = pos.coords;
+    map.setView([lat, lon], 13, { animate: true });
+    if (locateMarker) locateMarker.remove();
+    locateMarker = L.circleMarker([lat, lon], {
+      radius: 7,
+      color: '#7B3638',
+      fillColor: '#7B3638',
+      fillOpacity: 0.9,
+      weight: 2,
+    }).addTo(map);
+  }, () => { locateBtn.style.opacity = ''; });
+});
 
 // ── Initial load ──────────────────────────────────────────────────────────────
 
